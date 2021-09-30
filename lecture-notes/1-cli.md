@@ -77,9 +77,10 @@ the homework servers are in a small minority of Linux systems that are not
 configured to use Bash by default. Instead, they default to a non-POSIX shell
 called tcsh for historical reasons that we are not privy to. tcsh's prompt on
 the servers looks identical to Bash's, so `bash --login` won't appear to have
-any effect when you run it. However, if you don't do so, tcsh will interpret
-your commands, meaning much of the more advanced syntax we cover will result in
-error messages or unexpected behavior.
+any effect when you run it. You can run `echo $0` (which will make more sense
+after lecture 4) to check which shell you're using. If you don't switch to
+Bash, tcsh will interpret your commands, meaning much of the more advanced
+syntax we cover will result in error messages or unexpected behavior.
 
 [posix-scl]: https://pubs.opengroup.org/onlinepubs/9699919799.2018edition/utilities/V3_chap02.html
 
@@ -721,6 +722,8 @@ could search `grep "myfunction(.*)"`, which would look for a call to
 "myfunction" with any number of characters between parentheses. This is called
 a regular expression search.
 
+<!-- TODO: Link to more info on regexes -->
+
 Sometimes you might want to find all the lines that do *not* contain a pattern,
 because the pattern is very frequent. In this case you can do `grep -v
 "pattern" file`, where `-v` stands for "invert".
@@ -868,6 +871,9 @@ The keybindings are customizable, so read the manual pages for the default
 bindings.
 
 See also the `screen` command, which is similar.
+
+<!-- TODO: Talk about `less` -->
+<!-- TODO: talk about `uniq` -->
 
 #### `vi`
 `vi` is a POSIX-specified text editor that is available on almost every system
@@ -1036,3 +1042,1275 @@ needed. Note that the root *account* has no special relation to the root
     actually be granted and revoked more granularly using a system called
     *capabilities* (`man capabilities`), but it's generally still the case that
     programs run by root have every capability and others don't have any.
+
+## Lecture 3
+Last lecture, we talked about argument parsing and some common tools that
+you'll likely encounter during your illustrious career in computing. This
+lecture, we'll talk about some shell syntax that lets you combine these and
+other tools together in powerful ways. We'll also introduce some more shell
+features that make it easier to find, edit, and run commands.
+
+For a fun bit of history, take a look at [this
+video](https://www.youtube.com/watch?v=tc4ROCJYbm0), which depicts some of the
+original authors of UNIX first introducing concepts we'll cover today.
+
+### More ways to find previous commands
+In our very first lecture, we showed you how you can use the up and down arrow
+keys to cycle through past commands. Although that's probably the most
+commonly-used history navigation shortcut, the shell has other features that
+can make history navigation even more efficient.
+
+The first of these features is *history search*. If you know a piece of a
+command you want to rerun but can't quite remember when you last ran it, press
+<kbd>Ctrl-r</kbd>. You will see your prompt replaced with a new
+``(reverse-i-search)`':`` prompt. Within this prompt, you can type any snippet
+of a command from your history, and Bash will find the most recent command
+matching that snippet. To find older commands matching the same snippet, you
+can keep pressing <kbd>Ctrl-r</kbd>.
+
+Once you've found what you're looking for, you can either run it immediately by
+pressing <kbd>Enter</kbd> or bring it into a normal prompt for editing by
+pressing <kbd>Esc</kbd>, <kbd>Tab</kbd> or a left/right arrow key. If you can't
+find what you're looking for and want to get back to a blank prompt, you can
+always press <kbd>Ctrl-c</kbd>.
+
+The next feature is *history expansion*. Just as Bash expands `~` to your home
+directory, it also expands the special sequence `!!` to the last command you
+ran. You can use this to rerun the last command verbatim (e.g. to repeatedly
+compile a program) or to add something to the beginning or end of it (e.g. to
+rerun the previous command as root with `sudo !!`).
+
+History expansion isn't confined to the last command you ran. Remember the
+history event number in the example shell prompt from Lecture 1?[^ps1] By
+prefixing the history event number of a given command with a single `!`, you
+can rerun that command. Here's an example:
+
+```
+vm-hw03{thebb01}1013: gcc -Wall -Werror -o hello hello.c
+vm-hw03{thebb01}1014: ./hello
+Hello wordl!
+vm-hw03{thebb01}1015: vim hello.c  # fix the typo
+vm-hw03{thebb01}1016: !1013
+gcc -Wall -Werror -o hello hello.c
+vm-hw03{thebb01}1017: !1014
+./hello
+Hello world!
+vm-hw03{thebb01}1018: 
+```
+
+Note that Bash prints a line after each command with a history expansion, prior
+to the command's output, showing what was actually run. This is for clarity and
+also happens with `!!`.
+
+[^ps1]: If the prompt on your local system doesn't have a history event number,
+    you can add one by changing the `$PS1` shell variable. See the PROMPTING
+    section of `man bash` for details.
+
+### Variables in the shell
+We now change focus from shell features that help you run simple commands at an
+interactive prompt to ones that let you express complex relations and
+interdependencies between commands. Although you can use these features
+interactively, they really shine as part of shell scripts (which we'll cover
+next lecture).
+
+Let's start with *variables*. Any programming language needs a way to store
+data, and the shell is no exception. Every running shell holds a set of
+variables, which persist between commands but go away when the shell exits.
+Each variable has a name made up of letters, numbers, and underscores. (By
+tradition, variable names are all uppercase, but this isn't enforced anywhere.)
+To create or change a variable, separate the name and desired value with an
+equals sign (`=`). You must **not** put spaces around the `=`:
+
+```
+$ FOOBAR=somevalue
+$ 
+```
+
+To read a variable, prefix its name with a dollar sign (`$`) and use it in a
+command:
+
+```
+$ echo $FOOBAR
+somevalue
+$ 
+```
+
+The shell expands `$VARNAME` to the contents of VARNAME, just like it expands
+`~` to your home directory. Variable names can be used inside double quotes but
+not inside single quotes, and the `$` can be escaped with a backslash just like
+any special character:
+
+```
+$ echo $FOOBAR
+somevalue
+$ echo "$FOOBAR"
+somevalue
+$ echo '$FOOBAR'
+$FOOBAR
+$ echo \$FOOBAR
+$FOOBAR
+$ 
+```
+
+Shell variables hold strings. The value you assign to a variable is substituted
+textually when you use that variable in a command. As such, you can put
+variable expansions nearly anywhere:
+
+```
+$ COMMAND=ls
+$ DIRECTORY=/comp/50ISDT/examples/file-zoo/
+$ "$COMMAND" "$DIRECTORY"
+directory1  file1  file1-link  file2  file3  missing-link
+$ 
+```
+
+Because of this direct textual expansion, **variable names should almost always
+be used inside double quotes**. Consider what would happen if the variable
+contained a string with spaces! Well, we're right back to our old
+"hello"/"hello world"/"world" example from before:
+
+```
+$ cd /comp/50ISDT/examples/file-zoo/directory1/
+$ FILENAME="hello world"
+$ cat $FILENAME
+1
+2
+$ cat "$FILENAME"
+3
+$
+```
+
+Sometimes, it can be ambiguous where a variable name ends and subsequent text
+begins. In those situations, you can make it clear by enclosing the name in
+curly braces:
+
+```
+$ "$COMMAND" -l "${DIRECTORY}file3"
+-rw-rw----. 1 thebb01 ta50isdt 20 Sep  8 00:24 /comp/50ISDT/examples/file-zoo/file3
+$ 
+```
+
+If you're done with a variable and want to get rid of it, you can use `unset`.
+Note that it's not an error to access a variable that doesn't exist, although
+next lecture we'll show you how to change that to make debugging scripts
+easier:
+
+```
+$ unset FOOBAR
+$ echo "$FOOBAR"
+
+$ 
+```
+
+#### Environment variables
+The variables we created in the preceding example exist only within the shell.
+But Linux itself also has a concept of variables. These variables, called
+*environment variables*, provide another way of passing data to programs. Like
+arguments, environment variables can be read by programs and used to make
+decisions. Unlike arguments, environment variables are passed implicitly: new
+programs automatically inherit the environment of their parent unless the
+parent explicitly decides otherwise. This makes the environment a good place to
+hold system or user configurations that many programs care about.
+
+To see the environment variables in your shell session (which will be inherited
+by any command you run), run `env`:
+
+```
+$ env
+HOSTNAME=vm-hw01
+SHELL=/bin/bash
+USER=thebb01
+PATH=/h/thebb01/local/bin:/comp/105/bin:/comp/105/submit/bin:/usr/lib64/qt-3.3/bin:/usr/condabin:/usr/sup/bin:/usr/bin:/usr/sup/sbin:/usr/sbin:/h/thebb01/bin:/usr/cots/bin:/bin:/opt/puppetlabs/bin
+PWD=/h/thebb01
+EDITOR=vim
+LANG=en_US.UTF-8
+HOME=/h/thebb01
+$ 
+```
+
+The homework server has a much bigger environment than this, but I've omitted
+most of the variables so we can focus on these. Some of these variables hold
+system information: HOSTNAME is the computer's name and LANG is the language
+that programs should prefer. Others hold information about my user: USER and
+HOME are my username and home directory; SHELL is the shell that I use by
+default (but *not* necessarily the currently-running one); EDITOR is my
+preferred text editor. PWD is my working directory and holds the same value
+that `pwd` prints.
+
+Notably, PATH is how the shell knows where to look for commands. Like we
+mentioned in the first lecture, commands without a `/` in their name execute a
+program with a matching name from one of several system directories; PATH holds
+a `:`-separated list of those system directories. In the middle of my PATH, you
+can see `/usr/bin/`, which is where `ls` and most of the other commands we've
+used so far live.
+
+It's no coincidence that `env` formats its output to look like shell variable
+assignments. **Every environment variable is accessible as a shell variable**,
+and you can read and modify them as such:
+
+```
+$ echo "I am $USER, my home is at $HOME, and this place is called $HOSTNAME"
+I am thebb01, my home is at /h/thebb01, and this place is called vm-hw01
+$ 
+```
+
+However, the reverse is not true: a shell variable is not part of the
+environment automatically, but you can add it using `export` (and remove it
+using `export -n`):
+
+```
+$ FOOBAR=somevalue
+$ env | grep FOOBAR
+$ export FOOBAR
+$ env | grep FOOBAR
+FOOBAR=somevalue
+$ 
+```
+
+### Chaining commands together
+Sometimes you'll find yourself with a problem that can't be exactly solved by
+any one program. Luckily, the shell offers a number of powerful operators that
+let you run multiple programs with a single command, connecting the inputs and
+outputs of those programs in various ways. Before we get into the specifics of
+these operators, let's talk about what inputs and outputs a program can have.
+
+There are three ways the shell can send input to a program. We've already
+discussed the first two, arguments and environment variables. The third is
+*standard in* (a.k.a. *stdin*). stdin refers to text that a program reads while
+it's running. For those who've written C++ programs, this is where `cin` gets
+its data from. Many of the commands we've already shown, like `cat` and `grep`,
+will default to reading from stdin if no filename is given as an argument.
+
+There are also three ways a program can send output to the shell--*standard
+out* (a.k.a. *stdout*), *standard error* (a.k.a. *stderr*), and its *exit
+code*. stdout and stderr are both text streams that programs can write to while
+they're running (`cout` and `cerr` in C++), and the contents of both are
+printed to the terminal by default (but we'll see how that can change shortly).
+stdout is used for normal output of a program, such as filenames located by
+`find` or lines matched by `grep`. stderr is reserved for error and diagnostic
+messages, such as those printed when a program doesn't have permission to
+access a file. In the following example, `cat` prints `Hello, world` to stdout
+and `cat: file3: Permission denied` to stderr:
+
+```
+$ cd /comp/50ISDT/examples/file-zoo/
+$ cat file2 file3
+Hello, world
+cat: file3: Permission denied
+$ 
+```
+
+The final way of producing output, the *exit code*, is a number that every
+program returns when it exits. This number is traditionally used to report
+whether the program succeeded, indicated by a value of zero, or failed in some
+way, indicated by any nonzero value. (Individual programs assign their own
+meanings to different failure values.) You don't see the exit code of commands
+you run interactively, as the text they print is usually enough to tell whether
+they succeeded or failed. However, the shell always keeps track of the last
+command's exit code. You can view it through the special shell variable `$?`:
+
+```
+$ cd /comp/50ISDT/examples/file-zoo/
+$ cat file2
+Hello, world
+$ echo $?
+0
+$ cat file3
+cat: file3: Permission denied
+$ echo $?
+1
+$ 
+```
+
+Here, `cat` returned a success code of zero when it completed normally but a
+failure code of one when it couldn't read its input file. You can try out other
+programs on your own to see what codes they return in different situations.
+
+<!-- TODO: Move this section to the next lecture -->
+
+#### `test`
+There is a command, `test`, dedicated to producing error codes for use in
+conditionals. It comes bundled with a bunch of different *predicates*. (A
+predicate is a function that takes an input or multiple inputs and produces a
+boolean result.) If the predicate returns true, the exit code is zero, and if
+it returns false, the exit code is one. This is different from C, where true is
+one, but matches the POSIX convention of returning zero on success.
+
+To test if a string is the empty string `""`--if it has length zero--use `test
+-z "$STRING"`.
+
+```
+$ test -z ""
+$ echo $?
+0
+$ test -z "hello"
+$ echo $?
+1
+$ 
+```
+
+To test if a string is not the empty string--if it has nonzero length--use
+`test -n "$STRING"`:
+
+```
+$ test -n ""
+$ echo $?
+1
+$ test -n "hello"
+$ echo $?
+0
+$ 
+```
+
+`test` also provides a string equality predicate. To test if two strings are
+equal, use `test "$LEFT" = "$RIGHT"`. Note that this uses *one* equals sign
+instead of the two you may be used to. To check inequality, use `!=`:
+
+```
+$ test "hello" = "hello"
+$ echo $?
+0
+$ test "hello" = "world"
+$ echo $?
+1
+$ 
+```
+
+Even though variables are always strings, the text in those variables can
+represent other types of data. To that end, `test` also provides predicates for
+numbers and files. For numbers, use `-lt` for "less than", `-ge` for "greater
+than or equal", and so on (see `help test` for a full listing):
+
+```
+$ test 5 -lt 7
+$ echo $?
+0
+$ test 5 -lt 5
+$ echo $?
+1
+$ 
+```
+
+To test if a file or directory exists, use `test -e "$FILENAME"`. To test if it
+exists *and is a file*, use `test -f`. To test if it exists *and is a
+directory*, use `test -d`.
+
+#### Running programs sequentially
+Now that we've seen how programs can communicate with the shell, we come to our
+first few shell operators for combining multiple commands into a single, larger
+command. The first of these operators is the semicolon (`;`). By separating two
+commands with `;`, you tell the shell to run the first one followed by the
+second, just as if you'd put them each on their own line. We can use this
+operator to rewrite the last example more concisely:
+
+```
+$ cd /comp/50ISDT/examples/file-zoo/
+$ cat file2 ; echo $?
+Hello, world
+0
+$ cat file3 ; echo $?
+cat: file3: Permission denied
+1
+$ 
+```
+
+As the third command demonstrates, each command in the chain will run
+regardless of whether the one preceding it succeeded or not. This is sometimes
+desirable, as in the case of printing an exit code. But sometimes a later
+command depends on an earlier one, as in the case of making a directory and
+then creating a file there. For situations like this, you can use the `&&`
+operator, which runs the second command only if the first is successful (and
+returns success only if both are). Here, the failure of the second `mkdir`
+prevents `touch file2` from ever running:
+
+```
+$ mkdir dir1 && touch dir1/file1
+$ echo $?
+0
+$ ls dir1
+file1
+$ mkdir dir1 && touch dir1/file2
+mkdir: cannot create directory 'dir1': File exists
+$ echo $?
+1
+$ ls dir1
+file1
+$ 
+```
+
+As you might expect, there's also a `||` operator, which runs the second
+command only if the first fails and returns success if either succeeds. You can
+chain as many commands you want together using any of these three operators,
+and they'll be run left-to-right.
+
+#### Pipelines
+The next operator we'll discuss is one of the hallmarks of POSIX shells. It's
+the foundation upon which the [UNIX
+Philosophy](https://en.wikipedia.org/wiki/Unix_philosophy)--to write small
+programs that do one thing well--is built. This operator is known as the
+*pipe*, and it's denoted with a vertical bar (`|`).
+
+When you separate two commands with `|`, the shell connects stdout of the first
+command to stdin of the second, forming a *pipeline*. Pipelines can be
+arbitrarily long, and they let you express complex data processing operations
+in terms of the basic operations provided by individual programs.
+
+To illustrate this, let's build a pipeline to find which header file in
+`/usr/include/` has the most lines. (`/usr/include/` is the standard location
+for system headers like `stdio.h`.) We'll start with a command to find all the
+header files in the directory. We learned about `find` last lecture, so let's
+use that:
+
+```
+$ find /usr/include/ -type f -name '*.h'
+/usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlib.h
+/usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlibrgb.h
+/usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-loader.h
+/usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-autocleanups.h
+<lots more lines>
+$ 
+```
+
+Here, we're looking for files in `/usr/include/` whose name ends in `.h`. As
+you can see, there are lots of them. We're using `find` instead of `ls` because
+`find` also looks in subdirectories.
+
+The next thing we'll do is count the number of lines in each file. We know that
+`wc` can count lines in a file, but there's a problem: `wc` as we've used it so
+far wants filenames as arguments, but if we add it to our pipeline it will get
+the list of files on stdin instead. As it happens, however, `wc` has an
+alternate mode that does nearly what we need[^files-as-args]. From its man
+page:
+
+>     --files0-from=F
+>            read input from the files specified by NUL-terminated names in
+>            file F; If F is - then read names from standard input
+
+[^files-as-args]: If you ever encounter a command that doesn't have such a mode
+    and can only take filenames as arguments, worry not! There is a special
+    tool called `xargs` (`man xargs`) designed specifically for using such
+    tools in pipelines. In the case of piping from `find` specifically, you can
+    also use `find`'s `-exec` flag (`man find`).
+
+By passing `--files0-from=-`, we can have `wc -l` read a list of files to count
+from standard in! "NUL-terminated" is a concept you'll see often when dealing
+with pipelines containing filenames: POSIX tools typically operate on a
+line-by-line basis, but this becomes problematic when working with filenames,
+since filenames are allowed to contain newlines[^filename-chars]. To work
+around this issue, many programs that read or write lists of files offer an
+alternate mode where each entry is separated by the unprintable character `\0`,
+which can't occur in filenames. As luck would have it, `find` offers such a
+mode with its `-print0` flag.
+
+[^filename-chars]: And a lot of other unexpected characters, unfortunately.
+    Don't treat your filenames as nicely encoded strings; instead, treat them
+    as byte arrays.
+
+Adding this flag to our `find` invocation and piping into `wc` yields the
+following:
+
+```
+$ find /usr/include/ -type f -name '*.h' -print0 | wc --files0-from=- -l
+92 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlib.h
+233 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlibrgb.h
+119 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-loader.h
+37 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-autocleanups.h
+<lots more lines>
+83 /usr/include/netrom/netrom.h
+70 /usr/include/H5Object.h
+4233248 total
+$ 
+```
+
+We've made some progress! Now every filename is preceded by its line count.
+(Note that this command may take a while to run, since `wc` has to read
+thousands of files.)
+
+Wait a minute, though--what's this `4233248 total` line? That's not a file
+ending in `.h`! As it turns out, `wc` prints a total line count at the end of
+its output, and there's no flag to disable it. Such an inconvenience is no
+match for the power of pipelines though: we can use `head -n -1` (note: `-1`,
+not `1`) to discard the last line of output from `wc`[^annoying-edge-case]:
+
+```
+$ find /usr/include/ -type f -name '*.h' -print0 | wc --files0-from=- -l | head -n -1
+92 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlib.h
+233 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlibrgb.h
+119 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-loader.h
+37 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-autocleanups.h
+<lots more lines>
+83 /usr/include/netrom/netrom.h
+70 /usr/include/H5Object.h
+$ 
+```
+
+[^annoying-edge-case]: Unfortunately, this has an annoying edge case. If `find`
+    produces zero or one filenames to pass to `wc`, `wc` won't print the
+    `total` line. And in the general case, we can't use `grep -v` to filter out
+    lines that contain `total` either, since a file could be named `total`. In
+    this case, however, we're exclusively looking for files that end in `.h`,
+    so adding `grep -v 'total$'` to the pipeline would be a more robust
+    solution.
+
+But how do we pick the biggest one out of this list? We haven't learned about
+any utility to do this directly, but we have learned about `sort`, which can
+ensure that the biggest number is at one end of the list. Let's sort the list
+such that the biggest number is on top:
+
+```
+$ find /usr/include/ -type f -name '*.h' -print0 | wc --files0-from=- -l | head -n -1 | sort -rn
+4233248 total
+40496 /usr/include/php/Zend/zend_vm_execute.h
+20054 /usr/include/opencv2/ts/ts_gtest.h
+19634 /usr/include/epoxy/gl_generated.h
+19455 /usr/include/openblas/lapacke.h
+<lots more lines>
+$ 
+```
+
+Now we have the line we care about at the very top, and all we have to do is
+get rid of all the other uninteresting lines. For that, let's again use `head`:
+
+```
+$ find /usr/include/ -type f -name '*.h' -print0 | wc --files0-from=- -l | head -n -1 | sort -rn | head -n 1
+40496 /usr/include/php/Zend/zend_vm_execute.h
+$ 
+```
+
+It would probably be fine to call the pipeline finished at this point, but if
+we really want we can also get rid of the line count and leave just the
+filename using `cut -d' ' -f2`. The `-d` stands for `--delimiter`, which in our
+case is a space, and the `-f` stands for `--fields`, where we specify that we
+only want field number 2. (The fields are 1-indexed.)
+
+```
+$ find /usr/include/ -type f -name '*.h' -print0 | wc --files0-from=- -l | head -n -1 | sort -rn | head -n 1 | cut -d' ' -f2
+/usr/include/php/Zend/zend_vm_execute.h
+$ 
+```
+
+And we're done! By combining six commands, we answered our question, and we now
+have a pipeline skeleton that can be modified in minor ways to answer all sorts
+of related questions, too. (What about the top 5 longest files? Top 10
+shortest? And so on.) Hopefully, this example illustrated some of the
+flexibility the pipe operator brings.
+
+### Redirection
+One limitation of pipelines is that they write their final output to the
+terminal. In the case of our example above, that's fine because the output is
+just one file. But what if we wanted to save a report of how many lines were in
+each header file at a given time? On the homework server, `find /usr/include/
+-type f -name '*.h' -print0 | wc --files0-from=- -l` outputs over 18,000 lines,
+so manually retyping, or even copy/pasting, the output would not be fun.
+
+The shell's *redirection* operators can help in situations like this. `>`, the
+output redirection operator, saves stdout to a given file. Similarly, `<`, the
+input redirection operator, copies a file's contents to stdin.
+
+Let's split our pipeline from above into two commands using redirection:
+
+```
+$ find /usr/include/ -type f -name '*.h' -print0 | wc --files0-from=- -l >header-line-counts
+$ ls
+header-line-counts
+$ cat header-line-counts
+92 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlib.h
+233 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf-xlib/gdk-pixbuf-xlibrgb.h
+119 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-loader.h
+37 /usr/include/gdk-pixbuf-2.0/gdk-pixbuf/gdk-pixbuf-autocleanups.h
+<lots more lines>
+$ head -n -1 <header-line-counts | sort -rn | head -n 1 | cut -d' ' -f2
+/usr/include/php/Zend/zend_vm_execute.h
+$ 
+```
+
+The filename always goes after the redirection character, meaning the arrow
+points in the direction data flows. For output redirection (`>file1`) , the
+file gets written and so the arrow points towards it. For input redirection
+(`<file1`), the file gets read and so the arrow points away from it.
+
+Be careful with the filenames you specify for output redirection! If you
+redirect into a file that  already exists, that file's contents will be
+completely replaced with no warning! **Output files are overwritten before the
+command runs, so a command like `sed 's/a/b/' file1 >file1` will empty your
+file!** There is a variant of output redirection, `>>`, that appends to a file
+that already exists instead of overwriting it.
+
+You may have noticed that the last command in our example can be written
+without input redirection at all, as `head -n -1 header-line-counts | sort -rn
+| head -n 1 | cut -d' ' -f2`. This is indeed true, and it's why you'll see
+output redirection used a lot more than input redirection: most tools can read
+from a filename given as an argument, so input redirection is usually
+unnecessary.
+
+Output redirection, like pipelines, only redirects stdout by default. stderr is
+still sent to the terminal so you can see errors and so that the output file
+doesn't contain error messages that might confuse a later tool. If you have
+reason to redirect stderr, you can do it with `2>`. (2 is the number POSIX
+assigns to stderr; 1 is stdout, so `1>` is the same as `>`.)
+
+### Job control
+One thing common to every command you've seen so far is that, once you run it,
+you can't run anything else until it finishes and the shell prints a new
+prompt. In fact, we told you that this was core to how shells work when we
+talked about REPLs in Lecture 1.
+
+As it turns out, though, Bash and other POSIX shells provide a way to opt out
+of this behavior. By suffixing a command with an ampersand (`&`), you can tell
+Bash to start that command and then immediately print a new prompt without
+waiting for it to finish. Although it's hard for us to show this in a pasted
+transcript, you can try it out for yourself using the `sleep` command! `sleep`
+takes a number as its only argument and waits that many seconds before exiting.
+Try running `sleep 3`; you'll see that it takes three seconds for a new prompt
+to appear. Now try running `sleep 3 &`; this time, a new prompt should appear
+immediately and you'll see a message like this:
+
+```
+[1] 8328
+```
+
+This message is from the shell's *job control* subsystem, which is responsible
+for keeping track of and reporting the state of *background jobs* like the one
+you just created. It includes two pieces of information: the first, `[1]` is
+the *job ID* that the shell assigned the newly-created job. The second piece of
+information, `8328`, is the *process ID* of the command you just
+ran[^process-ids].
+
+Once a job is in the background, it will run to completion on its own time. You
+will be able to see its output[^interspersed-output], but you won't be able to
+give it input because anything you type will go to the shell or foreground job
+instead. You can bring the last background job you ran back into the foreground
+by typing `fg`, at which point it will accept input again.
+
+You can also move foreground jobs to the background. To do this, first press
+<kbd>Ctrl-z</kbd>. This will temporarily pause the job and bring you back to a
+prompt. You can then either leave the job stopped until you bring it back to
+the foreground with `fg` or tell it to continue as a background job with `bg`.
+
+To see a list of jobs that haven't finished yet, use the built in `jobs`
+command:
+
+```
+$ jobs
+[1]+  Running                 sleep 3 &
+$ 
+```
+
+Each line shows the ID, state ("Running" or "Stopped") and command for a single
+job. The last and second-to-last jobs to run are annotated with `+` and `-`,
+respectively. When a background job finishes, the job control subsystem will
+notify you of that fact by printing a message following much the same format
+before your next prompt:
+
+```
+[1]+  Done                    sleep 3
+$ 
+```
+
+The `fg`, `bg`, and `jobs` commands can all take a *job specifier* as an
+optional argument, which if present will tell them which job to act on. `%%`
+and ``%+`` both refer to the current job, while `%` followed by a job ID refers
+to that job. For more ways to refer to a given job, as well as details on how
+Bash leverages features of the Linux kernel to implement job control, see the
+JOB CONTROL section of `man bash`.
+
+[^process-ids]: Process IDs (a.k.a. PIDs) are what the Linux kernel uses to
+    keep track of running programs, and every program you run (regardless of
+    `&`) has one. The shell prints the PID prominently for background jobs
+    because commands that aren't part of the shell don't know about job IDs but
+    might still want to interact with the process as it runs.
+
+[^interspersed-output]: If you run a background job that prints output, that
+    output will end up interspersed with the output of whatever's in the
+    foreground. This can be confusing, especially if you're running something
+    that expects to have full control of the terminal, like vi, in the
+    foreground. To prevent this, you can redirect the background job's output
+    to a file. *Tip:* the special file `/dev/null` will discard any data
+    written to it and so can be a redirection target for output you don't care
+    about.
+
+## Lecture 4
+
+### Command substitution
+Last lecture, you saw how the shell will substitute a variable name, like
+`$FOOBAR`, with that variable's value when you use it as part of a command.
+Another similar feature, *command substitution*, lets you include a program's
+standard output as part of a command. To do so, put the command you want to run
+inside the parentheses in `$()`[^backtick-substitution]. For example:
+
+```
+$ echo "The last word in the dictionary is $(tail -n 1 /usr/share/dict/words)."
+The last word in the dictionary is ZZZ.
+$ 
+```
+
+Here, we asked the shell to run `tail`, which extracted the last line of
+`/usr/share/dict/words`[^words-file], and substituted its output directly into
+a string that then got passed to `echo` for printing.
+
+Like variable substitutions, command substitutions can and should be put inside
+double quotes but don't work inside single quotes. The risk of using an
+unquoted command substitution is the same: if the command's standard output
+contains spaces, it will be treated as multiple words by the shell unless
+quoted.
+
+You can use all the syntax you've learned so far inside a command substitution,
+just as if you were writing a standalone command. For example, we can pass the
+output of last week's whole shell pipeline to `head`:
+
+```
+$ head "$(find /usr/include/ -type f -name '*.h' -print0 | wc --files0-from=- -l | head -n -1 | sort -rn | head -n 1 | cut -d' ' -f2)"
+/*
+   +----------------------------------------------------------------------+
+   | Zend Engine                                                          |
+   +----------------------------------------------------------------------+
+   | Copyright (c) 1998-2013 Zend Technologies Ltd. (http://www.zend.com) |
+   +----------------------------------------------------------------------+
+   | This source file is subject to version 2.00 of the Zend license,     |
+   | that is bundled with this package in the file LICENSE, and is        |
+   | available through the world-wide-web at the following url:           |
+   | http://www.zend.com/license/2_00.txt.                                |
+$ 
+```
+
+[^backtick-substitution]: An alternate way to do the same thing is to put the
+    command name between backticks (``` `` ```). You may see this style in old
+    shell scripts, but it's rarely used in new scripts because it's not
+    nestable.
+
+[^words-file]: `/usr/share/dict/words` comes with most Linux distributions and
+    holds a list of commonly-used English words. It's used by some programs for
+    spell checking, so onomatopoeias like "ZZZ" are included.
+
+### Glob patterns
+We spoke about patterns briefly in Lecture 2 when describing arguments for
+tools like `grep` and `sed`. Those tools incorporate extremely powerful (and
+confusing) regular expression languages that allow you to express a huge
+variety of different patterns. What we have not discussed yet is the shell's
+own less-powerful (and less-confusing) pattern language.
+
+The piece of this language you'll see used most often is the `*` character. If
+you include it in a word, the shell will interpret that word as a file path
+where the `*` represents any set of zero or more characters. Such a pattern is
+known as a *wildcard* or *glob*, and, if any files match it, the shell will
+substitute it with *all* of them:
+
+```
+$ cd /comp/50ISDT/examples/file-zoo/
+$ ls
+directory1  file1  file1-link  file2  file3  missing-link
+$ echo *
+directory1 file1 file1-link file2 file3 missing-link
+$ echo file*
+file1 file1-link file2 file3
+$ 
+```
+
+You can see that `echo *` behaves much the same as ls with no arguments, as it
+matches all files in the current directory. (`*`, like ls, doesn't match files
+beginning with `.` by default.)
+
+Unlike variable and command substitutions, `*` does not work inside either
+single or double quotes. However, you don't need to worry about quoting it, as
+it will correctly handle the expansions of paths containing spaces even when
+unquoted:
+
+```
+$ ls -l directory1/hello*
+-rw-rw-r--. 1 thebb01 ta50isdt 2 Sep  8 00:43 directory1/hello
+-rw-rw-r--. 1 thebb01 ta50isdt 2 Sep  8 00:43 directory1/hello world
+$ 
+```
+
+Globs behave somewhat unexpectedly when they don't match anything: instead of
+expanding to an empty string as you might expect, they remain completely
+unchanged! You should be careful of this behavior when writing scripts.
+The`shopt -s nullglob` or `shopt -s failglob` commands make the behavior more
+consistent; consider using one of these in conjunction with `set -euo pipefail`
+(see below) when writing glob-heavy scripts:
+
+```
+$ echo foobar*
+foobar*
+$ shopt -s nullglob
+$ echo foobar*
+
+$ shopt -s failglob
+$ echo foobar*
+-bash: no match: foobar*
+$ echo "foobar*" # Quotes still prevent processing
+foobar*
+$ 
+```
+
+### Shell scripts (and when not to use them!)
+As we've hinted, typing commands at a prompt isn't the only way to use Bash.
+You may sometimes find yourself in a situation where you frequently rerun the
+same sequence of commands, perhaps with minor variations. Or perhaps you want
+to let others run those commands without having to remember them or understand
+exactly how they work. This is where *shell scripts* come in.
+
+A shell script is a text file containing commands. When you ask the shell to
+run a script, it interprets and executes each line in sequence, just as if
+you'd typed the lines one after another at a prompt. You've already seen shell
+variables, and we'll learn about a number of other shell features today--like
+conditionals, loops, and functions--that give shell scripts a similar level of
+expressiveness to normal programming languages like C, C++, or Python.
+
+Before we talk about those features, though, a word of warning: although you
+can in theory solve any programming problem with a shell script, that doesn't
+mean you *should*. The shell lacks a number of features, like data types and
+variable scoping, that are crucial to writing scalable and maintainable
+programs, and as such any shell script that grows past a few tens of lines
+quickly becomes incomprehensible. Shell scripts work best as lightweight "glue"
+between other software that already exists.
+
+If you find yourself wanting to do any of the following things in a shell
+script, there's a good chance that your problem has outgrown the capabilities
+of the shell. In these cases, you should move at least part of your solution
+into its own program written in some other language:
+
+#### Non-textual I/O
+Not all software deals with text. If you need to process structured data that's
+kept in a binary format (i.e. not something you can process using tools like
+`cut` and `grep`), pick another language. If you have input or output that
+can't be represented as text (e.g. audio or image data), pick another language.
+
+#### External libraries
+Shell scripts excel at interacting with command-line programs. Pipelines,
+redirection, and argument substitution make shell scripts the easiest way to
+solve problems in terms of programs that already exist. But if you need to
+interact with a piece of software that *isn't* exposed through a command-line
+utility--for example, a database like PostgreSQL or MariaDB[^db-clis]--pick
+another language.
+
+[^db-clis]: Both these databases do actually come with command-line tools, but
+    those tools are designed for administrators to interactively configure and
+    debug the database and don't provide a means for efficiently running
+    queries and returning data in a format easily usable by scripts.
+
+#### Graphics
+Graphical user interface (GUI) libraries like Qt and GTK provide bindings for
+languages like C, C++, and Python that allow you to build complex visual
+interfaces with buttons, lists, tables, and images. These libraries, like the
+databases mentioned above, are not directly accessible via shell scripts. In
+general, if your program needs to use the mouse, pick another language.
+
+*Tip:* If you need to work with images, videos, or other binary data, pick a
+language with a good binary data library. People often reach for C or C++ in
+these cases, but languages like Python and Erlang provide just as good (and
+sometimes better) tooling! People use both format-specific libraries (such as
+libjpg, for working with JPGs) and format-agnostic libraries (like Python's
+`struct` module or Erlang's binary pattern matching).
+
+#### Data structures
+Even if your data is textual, you should probably pick another language if you
+need to store and later query that data as opposed to processing it all in one
+pass like a pipeline does. Because shell variables aren't typed, you can't
+build any of the data structures you might have learned about in CS 15 in a
+shell script. The best you can do is organize your data as files on disk.
+Languages like Python and Ruby, on the other hand, likely have the data
+structures you need built-in. And if they don't, you can build those
+structures.
+
+#### Complex logic
+If you need to do math, nest conditionals more than a couple levels deep, or
+express any logic more complex than a few `if` statements, pick a different
+language. The shell is fine for simple string and numeric comparisons, but
+larger boolean expressions get tricky fast. There's a reason that compile-time
+type checking, run-time type errors, and the like exist in other programming
+languages: they help people catch bugs. We'll talk more in depth about this in
+our last module.
+
+If you find yourself writing a bunch of logic in Bash, stop. Think hard about
+the problem you're trying to solve. Does a command-line tool exist that can
+solve that problem for you? If so, run it from your script instead of
+implementing the logic yourself. If not, consider writing such a command-line
+tool in something like C++ or Python for your script to run.
+
+### Creating and running scripts
+Let's make a first shell script. Open up your editor and type the following
+into a file. Say, `myscript.sh`:
+
+```bash
+echo "Hello, world!"
+echo "I am in a script and I am being run by $USER."
+```
+
+Save it. If you try and run it like a program you compiled in your CS courses
+-- by running `./myscript.sh` -- you will get the following error:
+
+```
+bash: ./myscript.sh: Permission denied
+```
+
+This is because you don't have execute (`x`) permission on the file, which you
+can verify with `ls -l`. If you would like to execute the script without
+execute permission, you will have to explicitly run the program using another
+program that has execute permission... like a shell. Try running `bash
+myscript.sh`.
+
+If you add execute permissions (`chmod +x myscript.sh`), you will be able to
+run your script using `./myscript.sh`. But what shell is running this file? We
+will find out more about this later (or read ahead to the `#!`
+section).[^shell-complication]
+
+<!-- TODO: Mention that Windows line endings will stop scripts from working -->
+
+[^shell-complication]: As it turns out, if you run your executable script with
+    `./myscript.sh` and there is no shebang, the kernel will refuse to execute
+    it. However, your shell (Bash, Zsh, whichever) can choose to execute it if
+    the kernel refuses. Bash and Zsh both make a guess if the file is a shell
+    script and attempt to execute it with either Bash or Zsh, respectively. So
+    it's a one- and sometimes two-step dance.
+
+#### Comment your code
+Bash scripts, as we mentioned, are harder to write and read than programs in
+other programming languages. Make sure to comment on the intent of any
+particularly tricky areas. Comments begin with the `#` character and continue
+until the end of the line.
+
+```bash
+# I am a comment
+echo "foo" # I am another comment
+```
+
+### Control flow in the shell
+So, you've chosen to use Bash to solve your problem; after you pass this class,
+we'll trust your judgement. Let's learn the missing pieces of shell syntax
+needed to write programs! Most of these will be familiar from CS 11, so we'll
+focus more on "how" than on "why" for each.
+
+In this section, we'll try to stick to syntax that's part of POSIX, so that
+your programs don't depend on Bash specifically. Bash does actually have some
+non-POSIX features that address a few of the limitations we mentioned in the
+last section, but those features aren't nearly enough to make it competitive
+with a language like Python. As such, we believe that all our advice above
+still stands and that, if you find yourself reaching for a Bash-specific
+feature, you probably shouldn't be using a shell script in the first place.
+
+#### if
+
+The basic structure for `if` statements in Bash is as follows:
+
+```bash
+if CONDITION; then
+  CONSEQUENT
+elif OTHER-CONDITION; then
+  OTHER-CONSEQUENT
+else
+  ALTERNATIVE
+fi
+```
+
+As with other programming languages, the `elif` (else if) and `else` components
+are optional. So the minimal `if` statement would look like:
+
+```bash
+if CONDITION; then
+  CONSEQUENT
+fi
+```
+
+Any command can be a condition, and its exit code will determine As we talked
+about earlier, you can use programs like `test` for your conditions. For
+example, to check if two strings are equal, you can use:
+
+```bash
+if test "$LEFT" = "$RIGHT"; then
+  echo "they are the same"
+fi
+```
+
+POSIX also provides a more natural-looking way of doing conditionals in your
+program. POSIX defines `test` to be equivalent to `[`, so you can instead
+write:
+
+```bash
+if [ "$LEFT" = "$RIGHT" ]; then
+  echo "they are the same"
+fi
+```
+
+Note that the spaces around the braces `[` and `]` are required, just as they
+are for any command--`[` is just a regular command with an unusual name:
+
+```
+$ ls -l /bin/\[
+-rwxr-xr-x 1 root root 59736 Sep  5  2019 '/bin/['
+$ 
+```
+
+(Though it is often implemented as a shell built-in, too.)
+
+#### Loops
+Because a programming language wouldn't be complete without a friendly loop,
+Bash includes not one but several looping constructs. In this section, we will
+present `while`, `for`, and `until`. These can be used like other programming
+languages' loop constructs, but they can also be used in conjunction with
+pipelines.
+
+Let us begin with the `while `loop. The basic structure for `while` in Bash is
+as follows:
+
+```bash
+while CONDITION; do
+  LOOP-BODY
+done
+```
+
+All of the same kinds of conditions you might use with `if` work with `while`,
+too.
+
+For example, to count up to four from zero, you can do:
+
+```bash
+i=0
+while [ "$i" -lt 5 ]; do
+  echo "$i"
+  i="$(($i+1))"
+done
+```
+
+The `$(($i+1))` is yet another type of expansion, called an *arithmetic
+expansion*. The shell will evaluate whatever's between the set of double
+parentheses as a mathematical expression and substitute the result. We won't
+cover this in detail, as you should in general avoid arithmetic in shell
+scripts, instead delegating to other commands when possible. For example, a
+command called `seq` can replace our whole loop:
+
+```bash
+seq 0 4
+```
+
+These scripts are equivalent. In fact, `seq` is even more flexible, allowing
+you to format the numbers, choose a separator, and pad with leading zeroes. It
+also supports an arbitrary increment. Go check out the manual page for more
+information.
+
+Now, onto `for` loops. Unlike in C, POSIX `for` loops do not have the `for
+(INIT; CONDITION; POST)` structure. They are instead based on iterating over
+sequences and are of the form:
+
+```bash
+for VAR in SEQUENCE; do
+  LOOP-BODY
+done
+```
+
+Let's take a look at an example:
+
+```bash
+for i in $(seq 99 -1 1); do
+    echo "$i bottles of beer on the wall..."
+done
+```
+
+Note that in this case the command substitution is **not quoted** because we
+want to treat every separate line from `seq` as a different input to the for
+loop.
+
+In this case, the sequence is a newline-separated list of numbers counting down
+from 99 to 1. The `for` loop binds each number to the variable `$i` for use in
+the body, and we sing a little song.
+
+Last, POSIX specifies a funny little loop called `until`. This is an inverted
+`while` loop, so instead of using the negation operator `!` to write something
+like:
+
+```bash
+while ! CONDITION; do
+  LOOP-BODY
+done
+```
+
+we can instead use:
+
+```bash
+until CONDITION; do
+  LOOP-BODY
+done
+```
+
+This is intended to remove visual clutter. The course staff has not often seen
+it used in real-world shell scripts, however.
+
+You can also [pipe to
+loops](https://unix.stackexchange.com/questions/7011/how-to-loop-over-the-lines-of-a-file/580545#580545),
+but that is outside the scope of this course's material and definitely falls
+into a "more advanced shell scripting" course.
+
+#### Referring to script arguments
+Scripts can read arguments from the special shell variables `$0` to `$N`, where
+`N` is a [rather large number](https://stackoverflow.com/a/22747030/569183).
+For argument indices larger than 9, however, you must use curly braces, like
+`${10}`.
+
+For example, the following script:
+
+```bash
+# myscript.sh
+echo "$1, world!"
+```
+
+can will print out "Hello, world!" when run like so:
+
+```
+$ bash myscript.sh Hello
+Hello, world!
+$
+```
+
+#### Defining functions
+It may be the case that you require a level of abstraction in your shell
+scripts that is somewhere between 1) writing a whole other shell script to call
+from your main script and 2) copy/pasting lines of code. For this, Bash allows
+you to define functions of your own. The syntax is rather terse:
+
+```bash
+FN-NAME () {
+  FN-BODY
+}
+```
+
+There are no static types. There are no argument declarations. Despite this,
+functions can read arguments from the special shell variables `$0` to `$N`,
+where `N` is a [rather large
+number](https://stackoverflow.com/a/22747030/569183). For argument indices
+larger than 9, however, you must use curly braces, like `${10}`.
+
+Here is a function to write a greeting to the person specified:
+
+```bash
+greet() {
+    echo "Welcome to CS 50ISDT, $1!"
+}
+```
+
+Function invocations look like normal command invocations -- unlike other
+programming languages, parentheses are not required:
+
+```bash
+greet "max"
+# => Welcome to CS 50ISDT, max!
+```
+
+Now that you are an expert shell script programmer (TM), you may find it
+educational to take a look at some of the shell scripts on your system and
+figure out what they do. To do that, we can list all of the available shell
+scripts and pick randomly:
+
+```
+$ grep -lrF '#!/bin/sh' /usr/bin > scripts.txt
+<you may see some permissions errors>
+$ vim $(sort -R scripts.txt | head -n 1)
+<vim opens>
+$
+```
+
+How long is the script? Is it well-commented? Does it follow the shell best
+practices we outline here?
+
+### Error handling (`set -euo pipefail` is your friend)
+Error handling in shell scripts is somewhat fraught. Normally in a programming
+language when there is an error, you find out right away -- or it is explicitly
+squashed. For example, in C, your program might segfault. Or, if you are
+luckier, it might print an error message and `exit()`. Or in C++, Python, and
+other programming languages that support it, it might raise an exception.
+
+In Bash, by default, things just kind of go... sideways. Exit codes are the
+only method of error reporting, and you have two standard options: zero and
+non-zero. But a non-zero error code does not necessarily meant that a command
+has *failed*, and that the error should be propagated up the call stack.
+
+Consider the case of searching for a string with `grep`. If a match is found,
+`grep` will exit with 0. If a match is not found, `grep` will exit with 1. You
+probably don't want your shell script crashing if a match is not found, so the
+shell surfaces that exit code for use in conditions. And that's it.
+
+Unfortunately, the same happens for commands that really truly have an error,
+like reading from a file that does not exist. If the entirety of your shell
+pipeline, for example, relies on reading from a file called `contact-list`, and
+that does not exist, the shell will happily continue trying to execute the rest
+of your shell script anyway--often with unexpected results.
+
+Fortunately, there is a *magic incantation* you can put at the top of your
+shell scripts: `set -euo pipefail`. This magic incantation is not actually
+magic, but instructs your shell to enter a particular mode. We'll go over it
+piece by piece.
+
+First, `set -e` exits the shell immediately if a command exists with a non-zero
+exit code. This helps avoid the aforementioned fiasco.
+
+Second, `set -u` changes the default behavior of reading undefined variables.
+By default, reading from an undefined variable returns the empty string, but
+with `set -u`, this is treated as an error. This enforces some amount of rigor
+for ensuring your variables are defined.
+
+Third, `set -o pipefail` causes pipelines to exit early if an intermediate
+command fails. The exit code of the whole pipeline is set to the exit code of
+the failed command. This helps `set -e` work in more cases; otherwise, a broken
+pipeline would not cause the entire shell script to exit early.
+
+All of these put together produce: `set -euo pipefail`.[^setx]
+
+[^setx]: There is another helpful option, `set -x`, that prints out every
+    command before it exits, including from invoked functions. This is useful
+    for debugging, or if you feel particularly nosy.
+
+We have listed one common incantation to ease your shell script debugging, but
+we have certainly not listed all of the available options to `set`. There are
+more options; check out the manual page.
+
+These options are useful both for you, the novice shell programmer, and for
+professionals. Recently, the video game launcher Steam had [a shell script
+bug](https://www.theregister.com/2015/01/17/scary_code_of_the_week_steam_cleans_linux_pcs/)
+that destroyed data in rare cases.
+
+### `#!` lines and how the kernel interprets them
+As we mentioned earlier, file extensions have little meaning on a Linux system.
+Linux reads, writes, and executes files of every extension identically;
+extensions, when present, only offer a hint to human readers about what's
+inside.
+
+This makes file types seem unknowable. So how does anyone get anything done if
+every file is completely opaque?
+
+As it turns out, not all is lost, and files are not as opaque as they seem.
+There is a notion of "magic numbers" (see `man magic`) that file formats can
+use to identify themselves to external viewers. For example, the magic number
+for executable files on Linux (ELF) is hex `7f 45 4c 46`, or `7f` followed by
+"ELF". This allows utilities like `file` (`man file`) to figure out if a file
+is an ELF binary or not, from looking at the first couple of bytes[^kind-of].
+
+[^kind-of]: This is still just a guess, but it is a more educated guess. You
+    could very well decide to write those bytes into a file and use them for
+    some other purpose -- bytes are bytes are bytes are bytes, after all. But
+    it is a *convention* to use these bytes to denote an ELF binary.
+
+There is another kind of magic number, hex 23 21 ("#!", pronounced any number
+of ways, but commonly "shebang" or "hash bang"), that denotes that a file is a
+script. It *does not* mean that the file is necessarily a *shell* script, but
+instead allows the programmer to specify an arbitrary interpreter for that
+particular file.
+
+For example, if you execute a file with `./myscript`, and it begins with
+`#!/bin/bash`, that means that the file should be treated as a Bash script and
+executed using `/bin/bash`. It is executed as if you manually typed `/bin/bash
+./myscript`. If a file starts with `#!/usr/bin/python`, the file should be
+treated as a Python script and executed using the specified Python interpreter.
+
+The [Linux kernel reads the shebang](
+https://github.com/torvalds/linux/blob/d4d016caa4b85b9aa98d7ec8c84e928621a614bc/fs/binfmt_script.c#L34)
+and the interpreter. Then, it runs the interpreter with the file as an
+argument. Magic.
+
+You may be wondering: but what do Bash and Python do about the line with the
+funny `#` character? Why isn't that a syntax error? For both of those
+languages, `#` denotes the beginning of a comment, which is ignored.
+
+### Shellcheck
+You may find [Shellcheck](https://www.shellcheck.net/) helpful. It statically
+analyzes your shell scripts for potential bugs and lets you know about the
+problems. We will talk more about tools like this in the fourth module,
+Correctness.

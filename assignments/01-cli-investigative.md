@@ -3,7 +3,7 @@
 
 # Homework 1: CLI, Investigative
 
-## An aside
+## Important: use Bash!
 
 For this and all future assignments, please make sure you are using Bash as
 your shell, as that's what this course will focus on for the reasons described
@@ -11,8 +11,8 @@ in [lecture](../lecture-notes/1-cli.html). The Tufts CS department's default
 shell for new users is tcsh, so unless you've asked to have yours
 changed[^change-shell], you'll need to run `bash -l` *each time you connect to
 the server prior to working on coursework*. Your prompt won't look any
-different after running this command, so don't worry if it appears to have done
-nothing.
+different after running this command, but you can run `echo $0` to check which
+shell you're using.
 
 [^change-shell]: On most Linux systems, you can use the `chsh` command to
     change your own shell, but this method doesn't work on the Tufts homework
@@ -46,7 +46,7 @@ syllabus for an example) with each:
 4. The website for this course, among other things, lives in our directory at
    `/comp/50ISDT/`. Take a look around! What's the password?
 5. How can you make `cat` number each line in a file? (Answer this question
-   without using your browser, please!)
+   without referencing the internet, please!)
 6. Files inside the special filesystem `/dev/` are used to communicate with the
    Linux kernel. Choose a file that looks interesting inside `/dev/` and tell
    us what it's for. You are free to use Google or any other internet or
@@ -54,6 +54,8 @@ syllabus for an example) with each:
 7. `/etc/` is a standard directory on Linux that contains system configuration
    files. Although file extensions (like `.txt` and `.jpg`) have no intrinsic
    meaning on Linux, many configuration files in `/etc/` have them anyway.
+
+   <!-- TODO: We should clarify if "files" here includes directories. -->
 
    Write a shell pipeline that prints the top ten most frequently occurring
    extensions of files inside `/etc/`, taking the "extension" to be the part of
@@ -76,11 +78,11 @@ syllabus for an example) with each:
    This is not a trivial problem. Expect to have several different commands in
    your pipeline. Please ask for help early if you are struggling.
 
-## Exploring files with find & grep: murder mystery in `/comp/50ISDT/`!
+## Exploring files: murder mystery in `/comp/50ISDT/`!
 
 There was a murder last night at your old university colleague David's dinner
 party! A guest found a body in the living room, and nobody knows who did it.
-You, the premiere private investigator in Medford, MA, have been called into
+You, the premiere private investigator in Medford, MA, have been called in to
 help. Explore David's magnificent mansion (represented conveniently by a
 directory tree in `/comp/50ISDT/cli1-murder-mystery/`) to see what you can
 find! Start your journey in the *entryway*.
